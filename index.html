@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover">
+    <title>生命 RPG·进化版 V0.21</title>
+    <style>
+        :root { 
+            --bg: #0f172a; --card: #1e293b; --text: #f8fafc; 
+            --hp: #ef4444; --xp: #3b82f6; --border: #334155;
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: var(--bg); color: var(--text); 
+            margin: 0; padding: 20px 15px calc(80px + var(--safe-bottom)) 15px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .game-container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 15px; }
+
+        /* HUD 状态栏 */
+        .rpg-hud { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .stat-box { background: var(--card); padding: 12px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-val { font-size: 20px; font-weight: 800; display: block; }
+        .bar-bg { height: 5px; background: #0f172a; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .bar-fill { height: 100%; transition: width 0.6s ease; }
+
+        /* 角色区 */
+        .character-stage { text-align: center; padding: 10px 0; position: relative; }
+        .avatar { font-size: 60px; }
+        .level-badge { position: absolute; top: 10px; right: 30%; background: var(--xp); font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 2px solid var(--bg); }
+
+        /* 任务卡片样式回归 */
+        .task-list { display: flex; flex-direction: column; gap: 10px; }
+        .task-card { background: var(--card); padding: 15px; border-radius: 16px; border-left: 6px solid #475569; display: flex; justify-content: space-between; align-items: center; border-right: 1px solid var(--border); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        
+        .btn { padding: 12px 16px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-edit { background: #334155; color: white; }
+        .btn-done { background: #0f172a; color: #475569; border: 1px solid #334155; }
+        .btn-add { background: transparent; border: 2px dashed #334155; color: #64748b; width: 100%; padding: 15px; border-radius: 16px; }
+
+        /* 日历样式 */
+        .calendar-section { background: var(--card); padding: 15px; border-radius: 20px; border: 1px solid var(--border); }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cal-cell { aspect-ratio: 1; background: #0f172a; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; cursor: pointer; border: 1.5px solid transparent; }
+        .cal-cell.today { border-color: var(--xp); background: rgba(59, 130, 246, 0.1); }
+        .cal-cell.has-data { background: #1e293b; border: 1px solid #334155; }
+
+        /* 弹窗通用 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(5px); padding: 20px; }
+        .modal { background: var(--card); padding: 25px; border-radius: 24px; width: 100%; max-width: 360px; border: 1px solid var(--border); }
+
+        /* 评分滑动条 */
+        .score-input-container { background: #0f172a; padding: 20px; border-radius: 20px; text-align: center; margin: 15px 0; }
+        .score-num-input { background: none; border: none; color: var(--xp); font-size: 48px; font-weight: 900; width: 100%; text-align: center; outline: none; border-bottom: 2px dashed #334155; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: #1e293b; height: 12px; border-radius: 10px; margin-top: 20px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; background: var(--xp); border-radius: 50%; border: 3px solid white; }
+
+        /* 🛠️ 调试按钮回归右上角 */
+        #debugBtn { position: fixed; top: 15px; right: 15px; width: 40px; height: 40px; background: #facc15; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; z-index: 999; opacity: 0.6; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        
+        .sync-zone { margin-top: 30px; display: flex; justify-content: center; gap: 12px; opacity: 0.3; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div id="debugBtn" onclick="openModal('debugModal')">🛠️</div>
+
+<div class="game-container">
+    <div id="dateIndicator" style="text-align:center; font-size:12px; color:#facc15; font-weight:bold; margin-bottom:-5px"></div>
+    
+    <div class="rpg-hud">
+        <div class="stat-box"><div style="font-size:9px; color:var(--hp); font-weight:bold">HEALTH</div><span id="hpVal" class="stat-val">100</span><div class="bar-bg"><div id="hpBar" class="bar-fill" style="background:var(--hp)"></div></div></div>
+        <div class="stat-box"><div style="font-size:9px; color:var(--xp); font-weight:bold">LEVEL</div><span id="lvlVal" class="stat-val">1</span><div class="bar-bg"><div id="xpBar" class="bar-fill" style="background:var(--xp)"></div></div></div>
+        <div class="stat-box"><div style="font-size:9px; font-weight:bold">EXP%</div><span id="expPerc" class="stat-val">0%</span><div class="bar-bg"><div id="progBar" class="bar-fill" style="background:white"></div></div></div>
+    </div>
+
+    <div class="character-stage"><div class="avatar" id="avatar">🧙‍♂️</div><div class="level-badge" id="lvlBadge">Lv.1</div></div>
+
+    <div class="task-list" id="taskList"></div>
+    <button class="btn btn-add" onclick="openModal('addModal')">+ 开启新的进化模块</button>
+
+    <div class="calendar-section">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-weight:bold">
+            <span onclick="moveMonth(-1)" style="padding:0 10px">❮</span> <span id="calMonthTitle"></span> <span onclick="moveMonth(1)" style="padding:0 10px">❯</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <div class="sync-zone">
+        <span onclick="copySave()">导出代码</span> | <span onclick="importSave()">导入恢复</span> | <span style="color:var(--hp)" onclick="hardReset()">清空</span>
+    </div>
+</div>
+
+<div class="modal-overlay" id="scoreModal" onclick="closeModal('scoreModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 style="text-align:center; margin-top:0">打卡评分</h3>
+        <div class="score-input-container">
+            <input type="number" id="numIn" class="score-num-input" min="0" max="100" oninput="syncScore(this.value, 'slider')">
+            <input type="range" id="sliderIn" min="0" max="100" oninput="syncScore(this.value, 'num')">
+        </div>
+        <div id="impactDisplay" style="text-align:center; margin:10px 0; font-weight:bold; height:20px"></div>
+        <div style="display:flex; gap:10px">
+            <button class="btn btn-edit" style="flex:1" onclick="closeModal('scoreModal')">取消</button>
+            <button class="btn" style="flex:1; background:white; color:black" onclick="saveScore()">确认提交</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="debugModal" onclick="closeModal('debugModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3>🛠️ 开发者时光机</h3>
+        <input type="date" id="debugDateInput" style="width:100%; padding:12px; border-radius:10px; border:none; background:#0f172a; color:white; margin:15px 0">
+        <button class="btn" style="width:100%; background:#facc15; color:black" onclick="setSimDate()">切换模拟日期</button>
+        <button class="btn btn-edit" style="width:100%; margin-top:10px" onclick="resetSimDate()">恢复真实今天</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="reviewModal" onclick="closeModal('reviewModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 id="revTitle">记录回顾</h3>
+        <div id="revBody"></div>
+        <button class="btn btn-edit" style="width:100%; margin-top:20px" onclick="closeModal('reviewModal')">关闭</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addModal" onclick="closeModal('addModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3>配置任务模组</h3>
+        <input type="text" id="addName" placeholder="任务名称" style="width:100%; padding:12px; background:#0f172a; border:1px solid #334155; color:white; border-radius:10px">
+        <div id="iconSel" style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:15px 0; max-height:100px; overflow-y:auto"></div>
+        <button class="btn" style="width:100%; background:white; color:black" onclick="addTask()">保存</button>
+    </div>
+</div>
+
+<script>
+    // 强制 YYYY-MM-DD 格式协议
+    function toISO(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    let state = JSON.parse(localStorage.getItem('rpg_v21_stable')) || {
+        hp: 100, xp: 0, lvl: 1,
+        tasks: [{id:'t1', name:'点击评分测试', icon:'🎯'}],
+        history: {}, awarded: {}
+    };
+
+    let activeIdx = null;
+    let viewMonth = new Date();
+    let selectedIcon = "🎯";
+
+    function getNow() {
+        const sim = localStorage.getItem('rpg_sim_v21');
+        return sim ? new Date(sim) : new Date();
+    }
+
+    function init() {
+        const today = toISO(getNow());
+        document.getElementById('dateIndicator').innerText = (localStorage.getItem('rpg_sim_v21') ? "🕒 [SIM] " : "📅 ") + today;
+        renderTasks(); renderCalendar(); updateHUD(); setupIconPicker();
+    }
+
+    function syncScore(v, target) {
+        const val = Math.min(100, Math.max(0, parseInt(v) || 0));
+        if(target === 'num') document.getElementById('numIn').value = val;
+        else if(target === 'slider') document.getElementById('sliderIn').value = val;
+        
+        const hp = (val >= 80) ? 2 : (val < 40 ? -5 : (val < 60 ? -2 : 0));
+        document.getElementById('impactDisplay').innerHTML = `<span style="color:${hp>=0?'#4ade80':'#ef4444'}">HP ${hp>=0?'+':''}${hp}</span> | <span style="color:var(--xp)">XP +${Math.floor(val/5)}</span>`;
+    }
+
+    function openScore(i) {
+        activeIdx = i;
+        const today = toISO(getNow());
+        // 默认评分改为 60
+        const currentScore = state.history[today]?.[state.tasks[i].id] ?? 60;
+        document.getElementById('numIn').value = currentScore;
+        document.getElementById('sliderIn').value = currentScore;
+        syncScore(currentScore, 'none');
+        openModal('scoreModal');
+    }
+
+    function saveScore() {
+        const val = parseInt(document.getElementById('numIn').value) || 0;
+        const today = toISO(getNow());
+        const task = state.tasks[activeIdx];
+        if(!state.history[today]) state.history[today] = {};
+        if(!state.awarded[today]) state.awarded[today] = [];
+
+        if(!state.awarded[today].includes(task.id)) {
+            let hp = (val >= 80) ? 2 : (val < 40 ? -5 : (val < 60 ? -2 : 0));
+            state.hp = Math.min(100, Math.max(0, state.hp + hp));
+            state.xp += Math.floor(val / 5);
+            state.awarded[today].push(task.id);
+            if(state.xp >= state.lvl * 100) { state.xp -= state.lvl * 100; state.lvl++; }
+        }
+        state.history[today][task.id] = val;
+        saveAll(); closeModal('scoreModal'); init();
+    }
+
+    function renderTasks() {
+        const container = document.getElementById('taskList'); container.innerHTML = '';
+        const today = toISO(getNow());
+        state.tasks.forEach((t, i) => {
+            const score = state.history[today]?.[t.id] ?? '--';
+            const done = state.awarded[today]?.includes(t.id);
+            container.innerHTML += `
+                <div class="task-card" style="border-left-color:${done?'#10b981':'#475569'}">
+                    <div style="display:flex; align-items:center; gap:12px">
+                        <span style="font-size:30px">${t.icon}</span>
+                        <div><b style="font-size:16px">${t.name}</b><br><small style="opacity:0.2" onclick="deleteTask(${i})">移除模块</small></div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:15px">
+                        <b style="font-size:22px; color:${score>=60?'#4ade80':'#64748b'}">${score}</b>
+                        <button class="btn ${done?'btn-done':'btn-edit'}" onclick="openScore(${i})">${done?'修改':'评分'}</button>
+                    </div>
+                </div>`;
+        });
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calGrid'); grid.innerHTML = '';
+        const y = viewMonth.getFullYear(), m = viewMonth.getMonth();
+        document.getElementById('calMonthTitle').innerText = `${y}年 ${m+1}月`;
+        const first = new Date(y, m, 1).getDay(), last = new Date(y, m+1, 0).getDate();
+        const todayS = toISO(getNow());
+
+        for(let i=0; i<first; i++) grid.appendChild(document.createElement('div'));
+        for(let d=1; d<=last; d++) {
+            const dateS = toISO(new Date(y, m, d));
+            const records = state.history[dateS];
+            const cell = document.createElement('div');
+            cell.className = `cal-cell ${dateS === todayS ? 'today' : ''} ${records ? 'has-data' : ''}`;
+            cell.innerHTML = `<span style="font-size:9px; position:absolute; top:2px; left:4px; opacity:0.3">${d}</span>`;
+            
+            if(records) {
+                const iconsHtml = Object.keys(records).map(tid => {
+                    const t = state.tasks.find(x => x.id === tid);
+                    const score = records[tid];
+                    // 仅显示达标图标，透明度由分数决定 (Score/100)
+                    if (t && score >= 60) {
+                        return `<span style="font-size:8px; opacity:${score/100}">${t.icon}</span>`;
+                    }
+                    return '';
+                }).join('');
+                cell.innerHTML += `<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:1px;margin-top:8px">${iconsHtml}</div>`;
+            }
+            cell.onclick = () => showReview(dateS);
+            grid.appendChild(cell);
+        }
+    }
+
+    function showReview(dateS) {
+        document.getElementById('revTitle').innerText = dateS;
+        const h = state.history[dateS];
+        const body = document.getElementById('revBody');
+        if(!h || Object.keys(h).length === 0) body.innerHTML = "<p style='text-align:center; opacity:0.3'>无数据</p>";
+        else {
+            body.innerHTML = Object.keys(h).map(tid => {
+                const t = state.tasks.find(x => x.id === tid) || {name:'已删', icon:'❓'};
+                return `<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #334155">
+                    <span>${t.icon} ${t.name}</span>
+                    <b style="color:${h[tid]>=60?'#4ade80':'#ef4444'}">${h[tid]}分</b>
+                </div>`;
+            }).join('');
+        }
+        openModal('reviewModal');
+    }
+
+    function openModal(id) { document.getElementById(id).style.display='flex'; }
+    function closeModal(id) { document.getElementById(id).style.display='none'; }
+    function setSimDate() { 
+        const v = document.getElementById('debugDateInput').value;
+        if(v) { localStorage.setItem('rpg_sim_v21', v); location.reload(); }
+    }
+    function resetSimDate() { localStorage.removeItem('rpg_sim_v21'); location.reload(); }
+    function moveMonth(n) { viewMonth.setMonth(viewMonth.getMonth()+n); renderCalendar(); }
+    
+    // 加固的 Base64 导出导入
+    function copySave() {
+        const code = btoa(encodeURIComponent(JSON.stringify(state)).replace(/%([0-9A-F]{2})/g, (m, p) => String.fromCharCode('0x'+p)));
+        const t = document.createElement('textarea'); t.value = code; document.body.appendChild(t); t.select();
+        document.execCommand('copy'); document.body.removeChild(t);
+        alert("全量加密存档已复制！");
+    }
+    function importSave() {
+        const code = prompt("粘贴存档代码：");
+        if(code) {
+            try {
+                const dec = decodeURIComponent(atob(code).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                state = JSON.parse(dec); saveAll(); location.reload();
+            } catch(e) { alert("导入失败，代码格式不正确。"); }
+        }
+    }
+    function saveAll() { localStorage.setItem('rpg_v21_stable', JSON.stringify(state)); }
+    function hardReset() { if(confirm("确定永久抹除所有数据？")) { localStorage.clear(); location.reload(); }}
+    function setupIconPicker() {
+        const list = ["🎯","🏃","📚","🧘","💤","☀️","🍎","💪","💻","🧠","🔥","🌿","💰","🎨"];
+        const box = document.getElementById('iconSel'); box.innerHTML = '';
+        list.forEach(i => {
+            const d = document.createElement('div'); d.innerText = i; d.style.padding='8px'; d.style.textAlign='center'; d.style.cursor='pointer'; d.style.fontSize='20px';
+            d.onclick = () => { document.querySelectorAll('#iconSel div').forEach(x => x.style.background='none'); d.style.background='#3b82f6'; selectedIcon = i; };
+            box.appendChild(d);
+        });
+    }
+    function addTask() {
+        const n = document.getElementById('addName').value; if(!n) return;
+        state.tasks.push({id:'t'+Date.now(), name:n, icon:selectedIcon});
+        saveAll(); location.reload();
+    }
+    function deleteTask(i) { if(confirm("确定移除？")) { state.tasks.splice(i,1); saveAll(); init(); }}
+    function updateHUD() {
+        document.getElementById('hpVal').innerText = state.hp;
+        document.getElementById('hpBar').style.width = state.hp + '%';
+        document.getElementById('lvlVal').innerText = state.lvl;
+        document.getElementById('lvlBadge').innerText = 'Lv.' + state.lvl;
+        const prog = (state.xp / (state.lvl * 100)) * 100;
+        document.getElementById('progBar').style.width = prog + '%';
+        document.getElementById('expPerc').innerText = Math.floor(prog) + '%';
+        document.getElementById('avatar').innerText = ["🤖","🧙‍♂️","🦸‍♂️","👑"][Math.min(state.lvl-1, 3)];
+    }
+
+    init();
+</script>
+</body>
+</html>
